@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Showdown: Laser Arena (2-Player)</title>
+    
+    <!-- MediaPipe Libraries for Computer Vision Offline Execution -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        :root {
+            --bg-space: #060713;
+            --p1-color: #ff0055;
+            --p2-color: #00f0ff;
+            --panel-bg: rgba(20, 22, 45, 0.65);
+            --border-glow: #1f2244;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-space);
+            color: #f1f5f9;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        header {
+            text-align: center;
+            margin: 10px 0;
+            z-index: 10;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 2rem;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            background: linear-gradient(90deg, var(--p1-color), var(--p2-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px rgba(255, 255, 255, 0.2);
+        }
+
+        .instructions {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            margin-top: 4px;
+        }
+
+        .arena-container {
+            display: flex;
+            gap: 20px;
+            width: 95%;
+            max-width: 1300px;
+            justify-content: center;
+            align-items: flex-start;
+            margin-top: 5px;
+        }
+
+        /* --- BATTLE GROUND ARENA --- */
+        .game-wrapper {
+            position: relative;
+            background: #090b18;
+            border: 3px solid var(--border-glow);
+            border-radius: 16px;
+            box-shadow: 0 0 40px rgba(0, 240, 255, 0.05), inset 0 0 20px rgba(0,0,0,0.8);
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* --- DASHBOARD MONITOR PANEL --- */
+        .control-panel {
+            width: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .camera-card {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-glow);
+            border-radius: 12px;
+            padding: 12px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .video-box {
+            position: relative;
+            width: 276px;
+            height: 180px;
+            background: #02040a;
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 0 auto;
+            border: 1px solid #2d3164;
+        }
+
+        #webcam {
+            width: 276px;
+            height: 180px;
+            transform: scaleX(-1); /* Correct mirrors */
+            object-fit: cover;
+        }
+
+        #ai-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 276px;
+            height: 180px;
+            transform: scaleX(-1);
+            pointer-events: none;
+        }
+
+        .status-badge {
+            margin-top: 10px;
+            padding: 6px;
+            background: #11142b;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            border: 1px solid #222958;
+            color: #64748b;
+        }
+
+        .score-display {
+            display: flex;
+            justify-content: space-between;
+            background: var(--panel-bg);
+            border: 1px solid var(--border-glow);
+            padding: 15px 25px;
+            border-radius: 12px;
+            font-size: 1.5rem;
+            font-weight: 800;
+        }
+
+        .p1-score { color: var(--p1-color); text-shadow: 0 0 10px var(--p1-color); }
+        .p2-score { color: var(--p2-color); text-shadow: 0 0 10px var(--p2-color); }
+
+        .btn-restart {
+            background: linear-gradient(135deg, #1e1b4b, #311042);
+            color: #fff;
+            border: 1px solid var(--border-glow);
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+        }
+
+        .btn-restart:hover {
+            border-color: #555bb3;
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Neon Showdown: Laser Arena</h1>
+        <div class="subtitle">🔴 Left Player (P1) | 🔵 Right Player (P2) — Move hand UP/DOWN to dodge. Open palm to shoot lasers!</div>
+    </header>
+
+    <div class="arena-container">
+        <!-- Main Battle Canvas -->
+        <div class="game-wrapper">
+            <canvas id="gameCanvas"></canvas>
+        </div>
+
+        <!-- Sidebar Console Layout -->
+        <div class="control-panel">
+            <div class="score-display">
+                <span id="p1-score" class="p1-score">0</span>
+                <span style="color:#475569;font-size:1.1rem">VS</span>
+                <span id="p2-score" class="p2-score">0</span>
+            </div>
+
+            <div class="camera-card">
+                <div class="video-box">
+                    <video id="webcam" autoplay playsinline></video>
+                    <canvas id="ai-canvas"></canvas>
+                </div>
+                <div class="status-badge" id="ai-status">
+                    Connecting Vision Matrix...
+                </div>
+            </div>
+
+            <button class="btn-restart" onclick="resetMatch()">Reset Matrix</button>
+        </div>
+    </div>
+
+    <script>
+        // --- MULTI-COLOUR CONFIGS ---
+        const COLOR_P1 = '#ff0055';
+        const COLOR_P2 = '#00f0ff';
+        const COLOR_LASER_P1 = '#ff66a3';
+        const COLOR_LASER_P2 = '#66f5ff';
+
+        // --- ARENA SETUP ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 800;
+        canvas.height = 500;
+
+        // --- GAME ELEMENTS STATE ---
+        let p1Y = 200, p2Y = 200;
+        const paddleWidth = 12, paddleHeight = 90;
+        
+        let p1Score = 0, p2Score = 0;
+        let lasers = [];
+
+        // Weapon Cooldown limits to prevent continuous rapid fire
+        let p1LastShot = 0, p2LastShot = 0;
+        const FIRE_COOLDOWN = 400; // ms (slightly faster combat now that the ball is gone)
+
+        // --- GAME MECHANICS AND LOOP ---
+        function updateGame() {
+            // Projectile Laser physics operations
+            for (let i = lasers.length - 1; i >= 0; i--) {
+                let l = lasers[i];
+                l.x += l.vx;
+
+                // Collision detection: Laser hitting opposition paddle elements
+                if (l.owner === 1 && l.x >= canvas.width - 30 && l.y >= p2Y && l.y <= p2Y + paddleHeight) {
+                    p1Score += 1; // Award point for landing an offensive shot
+                    lasers.splice(i, 1);
+                    continue;
+                }
+                if (l.owner === 2 && l.x <= 30 && l.y >= p1Y && l.y <= p1Y + paddleHeight) {
+                    p2Score += 1;
+                    lasers.splice(i, 1);
+                    continue;
+                }
+
+                // Strip lasers running outside of canvas resolution bounds
+                if (l.x < 0 || l.x > canvas.width) {
+                    lasers.splice(i, 1);
+                }
+            }
+
+            document.getElementById('p1-score').innerText = p1Score;
+            document.getElementById('p2-score').innerText = p2Score;
+        }
+
+        function spawnLaser(owner) {
+            const now = Date.now();
+            if (owner === 1 && now - p1LastShot > FIRE_COOLDOWN) {
+                lasers.push({ x: 35, y: p1Y + paddleHeight / 2, vx: 10, owner: 1 });
+                p1LastShot = now;
+            } else if (owner === 2 && now - p2LastShot > FIRE_COOLDOWN) {
+                lasers.push({ x: canvas.width - 35, y: p2Y + paddleHeight / 2, vx: -10, owner: 2 });
+                p2LastShot = now;
+            }
+        }
+
+        function resetMatch() {
+            p1Score = 0;
+            p2Score = 0;
+            lasers = [];
+        }
+
+        // --- GRAPHICS RENDERING SUB-ROUTINES ---
+        function drawArena() {
+            // Clean slate clear operations
+            ctx.fillStyle = '#060713';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw dividing midline dash track layout design
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 4;
+            ctx.setLineDash([15, 15]);
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.stroke();
+            ctx.setLineDash([]); // Clear formatting configurations
+
+            // Player 1 Paddle
+            ctx.fillStyle = COLOR_P1;
+            ctx.shadowColor = COLOR_P1;
+            ctx.shadowBlur = 15;
+            ctx.beginPath();
+            ctx.roundRect(15, p1Y, paddleWidth, paddleHeight, 6);
+            ctx.fill();
+
+            // Player 2 Paddle
+            ctx.fillStyle = COLOR_P2;
+            ctx.shadowColor = COLOR_P2;
+            ctx.shadowBlur = 15;
+            ctx.beginPath();
+            ctx.roundRect(canvas.width - 15 - paddleWidth, p2Y, paddleWidth, paddleHeight, 6);
+            ctx.fill();
+
+            // Projectile Laser arrays
+            lasers.forEach(l => {
+                ctx.fillStyle = l.owner === 1 ? COLOR_LASER_P1 : COLOR_LASER_P2;
+                ctx.shadowColor = ctx.fillStyle;
+                ctx.shadowBlur = 12;
+                ctx.fillRect(l.x - 6, l.y - 2, 12, 4);
+            });
+
+            // Reset engine shadows properties configuration
+            ctx.shadowBlur = 0;
+        }
+
+        function engineLoop() {
+            updateGame();
+            drawArena();
+            requestAnimationFrame(engineLoop);
+        }
+
+        // --- COMPUTER VISION ARCHITECTURE ---
+        const videoElement = document.getElementById('webcam');
+        const aiCanvas = document.getElementById('ai-canvas');
+        const aiCtx = aiCanvas.getContext('2d');
+        const statusBadge = document.getElementById('ai-status');
+
+        function onHandTrackingUpdate(results) {
+            aiCanvas.width = videoElement.videoWidth;
+            aiCanvas.height = videoElement.videoHeight;
+            aiCtx.clearRect(0, 0, aiCanvas.width, aiCanvas.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                statusBadge.innerText = `Engaged: Tracking ${results.multiHandLandmarks.length} Matrix Unit(s)`;
+
+                results.multiHandLandmarks.forEach((handMark) => {
+                    // Determine left-right structural alignment relative to the mirror axis
+                    let palmX = handMark[0].x; 
+                    let targetY = handMark[0].y * canvas.height - (paddleHeight / 2);
+                    // Constrain paddle movements securely inside boundaries
+                    targetY = Math.max(0, Math.min(canvas.height - paddleHeight, targetY));
+
+                    // Evaluate Open Palm vs Closed Fist logic status metrics
+                    let isOpenPalm = checkOpenPalm(handMark);
+
+                    if (palmX < 0.5) {
+                        // Hand mapped on Left Side of webcam -> Feeds to Player 2 (Mirrored alignment adjustments)
+                        p2Y = targetY;
+                        drawMiniWireframe(handMark, COLOR_P2);
+                        if (isOpenPalm) spawnLaser(2);
+                    } else {
+                        // Hand mapped on Right Side of webcam -> Feeds to Player 1
+                        p1Y = targetY;
+                        drawMiniWireframe(handMark, COLOR_P1);
+                        if (isOpenPalm) spawnLaser(1);
+                    }
+                });
+            } else {
+                statusBadge.innerText = "🚨 System Warning: Awaiting active Pilot Hands.";
+            }
+        }
+
+        function checkOpenPalm(landmarks) {
+            // Evaluates fingers height extensions relative to structural core joints
+            let indexExtended = landmarks[8].y < landmarks[6].y;
+            let middleExtended = landmarks[12].y < landmarks[10].y;
+            let ringExtended = landmarks[16].y < landmarks[14].y;
+            
+            return (indexExtended && middleExtended && ringExtended);
+        }
+
+        function drawMiniWireframe(landmarks, strokeColor) {
+            aiCtx.strokeStyle = strokeColor;
+            aiCtx.fillStyle = '#ffffff';
+            aiCtx.lineWidth = 2;
+
+            aiCtx.beginPath();
+            aiCtx.arc(landmarks[0].x * aiCanvas.width, landmarks[0].y * aiCanvas.height, 4, 0, 2*Math.PI);
+            aiCtx.fill();
+
+            // Render tracking connector guides
+            aiCtx.beginPath();
+            aiCtx.moveTo(landmarks[0].x * aiCanvas.width, landmarks[0].y * aiCanvas.height);
+            [5, 9, 13, 17].forEach(i => {
+                aiCtx.lineTo(landmarks[i].x * aiCanvas.width, landmarks[i].y * aiCanvas.height);
+            });
+            aiCtx.stroke();
+        }
+
+        // --- MEDIA PIPE PIPELINE BOOT ROUTINE ---
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 2, // Enable double track pipelines
+            modelComplexity: 0, // Performance optimized configuration for offline hardware
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        hands.onResults(onHandTrackingUpdate);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({ image: videoElement });
+            },
+            width: 276,
+            height: 180
+        });
+
+        camera.start()
+            .then(() => statusBadge.innerText = "Optic systems streaming successfully.")
+            .catch(() => statusBadge.innerText = "Fatal Error: Camera parameters inaccessible offline.");
+
+        // Start local mechanics loops
+        engineLoop();
+    </script>
+</body>
+</html>
